@@ -934,6 +934,25 @@ func TestCompiler_ResourceMapLength(t *testing.T) {
 	})
 }
 
+func TestCompiler_ResourceContext(t *testing.T) {
+	compileT(t, "sshd.config.params['Protocol'] == 2", func(res *llx.CodeBundle) {
+		assertFunction(t, "context", &llx.Function{
+			Type:    string(types.Resource("file.context")),
+			Binding: (1 << 32) | 1,
+			Args: []*llx.Primitive{llx.ArrayPrimitive(
+				[]*llx.Primitive{
+					llx.StringPrimitive("params"),
+					llx.StringPrimitive("[\"Protocol\"]"),
+					llx.StringPrimitive("==\x05"),
+				},
+				types.String,
+			)},
+		}, res.CodeV2.Blocks[0].Chunks[4])
+		assert.Equal(t, []uint64{1<<32 | 4}, res.CodeV2.Blocks[0].Entrypoints)
+		assert.Equal(t, []uint64{1<<32 | 3, 1<<32 | 5}, res.CodeV2.Blocks[0].Datapoints)
+	})
+}
+
 func TestCompiler_ResourceExpansion(t *testing.T) {
 	var cmd string
 

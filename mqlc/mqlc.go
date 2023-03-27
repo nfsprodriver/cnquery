@@ -81,6 +81,7 @@ type compiler struct {
 	blockRef  uint64
 	blockDeps []uint64
 	props     map[string]*llx.Primitive
+	contexts  map[uint64]*resources.Field
 	comment   string
 
 	// a standalone code is one that doesn't call any of its bindings
@@ -136,6 +137,7 @@ func (c *compiler) newBlockCompiler(binding *variable) compiler {
 		block:          block,
 		blockRef:       ref,
 		props:          c.props,
+		contexts:       map[uint64]*resources.Field{},
 		standalone:     true,
 	}
 }
@@ -1059,6 +1061,11 @@ func (c *compiler) compileBoundIdentifierWithoutMqlCtx(id string, binding *varia
 					Binding: binding.ref,
 				},
 			})
+
+			if fieldinfo.HasContext {
+				c.contexts[c.tailRef()] = fieldinfo
+			}
+
 			return true, typ, nil
 		}
 	}
@@ -1833,6 +1840,69 @@ func (c *compiler) updateEntrypoints(collectRefDatapoints bool) {
 	c.block.Datapoints = append(c.block.Datapoints, res...)
 }
 
+func (c *compiler) addContexts() {
+	for i := range c.block.Entrypoints {
+		ref := c.block.Entrypoints[i]
+
+		var found *resources.Field
+		var callstack []*llx.Chunk
+		for ref != 0 {
+			if field, ok := c.contexts[ref]; ok {
+				found = field
+				break
+			}
+
+			chunk := c.Result.CodeV2.Chunk(ref)
+			if chunk.Function == nil {
+				break
+			}
+
+			ref = chunk.Function.Binding
+			callstack = append(callstack, chunk)
+
+			// TODO: other types of referenced calls: arguments, ref primitives etc
+		}
+
+		if found == nil {
+			continue
+		}
+
+		block := c.Result.CodeV2.Block(ref)
+		chunk := c.Result.CodeV2.Chunk(ref)
+		if chunk.Function == nil {
+			log.Error().Msg("failed to get binding for file context on " + chunk.Id)
+			continue
+		}
+
+		calls := []*llx.Primitive{}
+		callstack = append(callstack, chunk)
+		for i := len(callstack); i != 0; i-- {
+			cur := callstack[i-1]
+			if cur.Call != llx.Chunk_FUNCTION {
+				break
+			}
+
+			if cur.Id == "[]" {
+				arg := cur.Function.Args[0].LabelV2(c.Result.CodeV2)
+				calls = append(calls, llx.StringPrimitive("["+arg+"]"))
+			} else {
+				calls = append(calls, llx.StringPrimitive(cur.Id))
+			}
+		}
+
+		block.AddChunk(c.Result.CodeV2, ref, &llx.Chunk{
+			Call: llx.Chunk_FUNCTION,
+			Id:   "context",
+			Function: &llx.Function{
+				Type:    string(types.Resource("file.context")),
+				Binding: chunk.Function.Binding,
+				Args:    []*llx.Primitive{llx.ArrayPrimitive(calls, types.String)},
+			},
+		})
+		block.Datapoints = append(block.Datapoints, block.TailRef(ref))
+	}
+}
+
 // CompileParsed AST into an executable structure
 func (c *compiler) CompileParsed(ast *parser.AST) error {
 	err := c.compileExpressions(ast.Expressions)
@@ -1843,6 +1913,7 @@ func (c *compiler) CompileParsed(ast *parser.AST) error {
 	c.postCompile()
 	c.Result.CodeV2.UpdateID()
 	c.updateEntrypoints(true)
+	c.addContexts()
 	c.updateLabels()
 
 	return nil
@@ -1906,6 +1977,7 @@ func CompileAST(ast *parser.AST, props map[string]*llx.Primitive, conf compilerC
 		blockRef:       1 << 32,
 		block:          codeBundle.CodeV2.Blocks[0],
 		props:          props,
+		contexts:       map[uint64]*resources.Field{},
 		standalone:     true,
 	}
 

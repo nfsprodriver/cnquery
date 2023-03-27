@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mondoo.com/cnquery/llx"
 	"go.mondoo.com/cnquery/resources"
 	"go.mondoo.com/cnquery/resources/packs/core"
 	"go.mondoo.com/cnquery/resources/packs/os/sshd"
@@ -228,4 +229,36 @@ func (s *mqlSshdConfig) GetHostkeys(params map[string]interface{}) ([]interface{
 	}
 
 	return s.parseConfigEntrySlice(rawHostKeys)
+}
+
+type ContextInfo struct {
+	File  core.File
+	Range llx.RangeData
+}
+
+func (s *mqlSshdConfig) GetContext(calls string) (core.FileContext, error) {
+	entry, ok := s.Cache.Load("calls")
+	if !ok || entry == nil {
+		return nil, nil
+	}
+
+	contexts, ok := entry.Data.(map[string]ContextInfo)
+	if !ok {
+		return nil, errors.New("internal error, cannot map calls to context in sshd.config")
+	}
+
+	context, ok := contexts[calls]
+	if !ok {
+		return nil, nil
+	}
+
+	r, err := s.MotorRuntime.CreateResource("file.context",
+		"file", context.File,
+		"range", context.Range,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return r.(core.FileContext), nil
 }
