@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.mondoo.com/cnquery/resources/packs/os"
 	"go.mondoo.com/cnquery/resources/packs/testutils"
+	"go.mondoo.com/cnquery/types"
 )
 
 func TestResource_SSHD(t *testing.T) {
@@ -102,5 +103,14 @@ func TestResource_MultiFileSSHD(t *testing.T) {
 		require.True(t, ok, "failed to convert resulting values")
 		require.Contains(t, data, "MaxSessions", "didn't find 'MaxSessions' param set")
 		assert.Equal(t, data["MaxSessions"], "99", "expected value from file in directory not set")
+	})
+}
+
+func TestResource_SshdContext(t *testing.T) {
+	t.Run("sshd params context", func(t *testing.T) {
+		res := x.TestQuery(t, "sshd.config.params[\"MACs\"]")
+		require.NotEmpty(t, res)
+		assert.NoError(t, res[1].Data.Error)
+		assert.Equal(t, types.Resource("file.context"), res[1].Data.Type)
 	})
 }

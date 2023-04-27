@@ -231,3 +231,51 @@ func resourceDateV2(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (
 
 	return TimeData(parsed), 0, nil
 }
+
+// FIXME: these context pieces need to move to builtin functions
+// that are called with arguments. For now, this is a workaround.
+// vv
+
+type ContextualResource interface {
+	GetContext(calls []string) (interface{}, error)
+}
+
+type FileContext interface {
+	MqlResource() *resources.Resource
+	MqlCompute(string) error
+	Field(string) (interface{}, error)
+	Register(string) error
+	Validate() error
+	// File() (File, error)
+	Range() ([]byte, error)
+	Content() (string, error)
+}
+
+func resourceContext(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
+	refDst, _ := chunk.Function.Args[1].RefV2()
+	v, s, err := e.resolveRef(refDst, ref)
+	if err != nil || s != 0 || v == nil {
+		return nil, s, err
+	}
+
+	calls := chunk.Function.Args[0]
+	sCalls := make([]string, len(calls.Array))
+	for i := range calls.Array {
+		sCalls[i] = string(calls.Array[i].Value)
+	}
+
+	ctx := bind.Value.(ContextualResource)
+	res, err := ctx.GetContext(sCalls)
+	if err != nil {
+		return &RawData{
+			Error: err,
+		}, 0, nil
+	}
+
+	return &RawData{
+		Type:  chunk.Type(),
+		Value: res,
+	}, 0, nil
+}
+
+// ^^

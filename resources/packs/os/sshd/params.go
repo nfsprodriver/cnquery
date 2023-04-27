@@ -2,16 +2,71 @@ package sshd
 
 import (
 	"strings"
+
+	"go.mondoo.com/cnquery/llx"
+	"go.mondoo.com/cnquery/resources/packs/core"
 )
 
-func Params(content string) (map[string]string, error) {
-	lines := strings.Split(content, "\n")
+type ContextInfo struct {
+	File  core.File
+	Range llx.RangeData
+}
 
-	res := make(map[string]string)
-	for _, textLine := range lines {
+type RangeContext struct {
+	Ranges []ContextInfo
+	Files  map[string]core.File
+}
+
+func (r RangeContext) AddRange(other RangeContext) {
+	for i := range other.Files {
+		f := other.Files[i]
+		id := f.MqlResource().Id
+		if _, ok := r.Files[id]; !ok {
+			r.Files[id] = f
+		}
+	}
+
+	// The offset is the tail end of the current ranges.
+	// All ranges are always added as 1 line-range (start to end line)
+	// per range in order. So we can simply go to the last range and
+	// grab the second line (the end of the range).
+	var offset int
+	if len(r.Ranges) != 0 {
+		last := r.Ranges[len(r.Ranges)-1]
+		lines, _ := last.Range.ExtractNext()
+		offset = int(lines[1])
+	}
+
+	for i := range other.Ranges {
+		cur := other.Ranges[i]
+		next := ContextInfo{
+			File:  cur.File,
+			Range: cur.Range.Offset(offset),
+		}
+		r.Ranges = append(r.Ranges, next)
+	}
+}
+
+func (r RangeContext) OfLine(line uint32) *ContextInfo {
+	for i := range r.Ranges {
+		cur := r.Ranges[i]
+		if cur.Range.ContainsLine(line) {
+			return &cur
+		}
+	}
+
+	return nil
+}
+
+func Params(content string, contentCtx RangeContext) (map[string]string, map[string]ContextInfo, error) {
+	params := map[string]string{}
+	ctx := map[string]ContextInfo{}
+
+	lines := strings.Split(content, "\n")
+	for lineIdx, textLine := range lines {
 		l, err := ParseLine([]rune(textLine))
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		k := l.key
@@ -25,14 +80,21 @@ func Params(content string) (map[string]string, error) {
 		}
 
 		// check if we have an entry already
-		if val, ok := res[k]; ok {
-			res[k] = val + "," + l.args
+		if val, ok := params[k]; ok {
+			params[k] = val + "," + l.args
 		} else {
-			res[k] = l.args
+			params[k] = l.args
+		}
+		if fileCtx := contentCtx.OfLine(uint32(lineIdx)); fileCtx != nil {
+			ctx[k] = ContextInfo{
+				File: fileCtx.File,
+				// FIXME: adjust this with the offset of the content in the file
+				Range: llx.NewRange().AddLine(uint32(lineIdx)),
+			}
 		}
 	}
 
-	return res, nil
+	return params, ctx, nil
 }
 
 var SSH_Keywords = map[string]string{

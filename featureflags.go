@@ -65,6 +65,13 @@ const (
 	// start: v7.0
 	// end:   v8.0
 	MQLAssetContext
+
+	// FileContext feature flag
+	// desc:  Adds file context to all supported LR resources
+	//
+	// start: v8.7
+	// end:   v10.0
+	FileContext
 )
 
 // FeaturesValue is a map from feature name to feature flag
@@ -73,6 +80,7 @@ var FeaturesValue = map[string]Feature{
 	PiperCode.String():       PiperCode,
 	BoolAssertions.String():  BoolAssertions,
 	MQLAssetContext.String(): MQLAssetContext,
+	FileContext.String():     FileContext,
 }
 
 // DefaultFeatures are a set of default flags that are active

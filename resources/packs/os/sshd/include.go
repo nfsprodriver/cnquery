@@ -11,7 +11,10 @@ import (
 
 	"github.com/spf13/afero"
 
+	"go.mondoo.com/cnquery/llx"
 	"go.mondoo.com/cnquery/motor/providers/os"
+	"go.mondoo.com/cnquery/resources"
+	"go.mondoo.com/cnquery/resources/packs/core"
 )
 
 var (
@@ -22,21 +25,6 @@ var (
 	// statement have a wildcard/glob (ie. a literal '*')
 	includeStatementHasGlob = regexp.MustCompile(`.*\*.*`)
 )
-
-// GetAllSshdIncludedFiles will return the list of dependent files referenced in the sshd
-// configuration file's 'Include' statements starting from the provided filePath parameter as
-// the beginning of the sshd configuration.
-func GetAllSshdIncludedFiles(filePath string, osProvider os.OperatingSystemProvider) ([]string, error) {
-	allFiles, _, err := readSshdConfig(filePath, osProvider)
-	return allFiles, err
-}
-
-// GetSshdUnifiedContent will return the unified sshd configuration content starting
-// from the provided filePath parameter as the beginning of the sshd configuration.
-func GetSshdUnifiedContent(filePath string, osProvider os.OperatingSystemProvider) (string, error) {
-	_, content, err := readSshdConfig(filePath, osProvider)
-	return content, err
-}
 
 // When an Include lists a relative path, it is interpreted as relative to /etc/ssh/
 const relativePathPrefix = "/etc/ssh/"
@@ -60,18 +48,20 @@ func getFullPath(filePath string) string {
 	return filepath.Join(dir, fileName)
 }
 
-// readSshdConfig will traverse the provided path to an sshd config file and return
+// ReadSshdConfig will traverse the provided path to an sshd config file and return
 // the list of all depended files encountered while recursively traversing the
 // sshd 'Include' statements, and the unified sshd configuration where all the
 // sshd 'Include' statements have been replaced with the referenced file's content
 // in place of the 'Include'.
-func readSshdConfig(filePath string, osProvider os.OperatingSystemProvider) ([]string, string, error) {
-	allFiles := []string{}
-	var allContent strings.Builder
+func ReadSshdConfig(filePath string, runtime *resources.Runtime, osProvider os.OperatingSystemProvider) (string, RangeContext, error) {
+	ctx := RangeContext{
+		Files: map[string]core.File{},
+	}
+	var res strings.Builder
 
 	baseDirectoryPath := getBaseDirectory(filePath)
 
-	// First check if the Include path has a wildcard/glob
+	// 1: check if the Include path has a wildcard/glob
 	m := includeStatementHasGlob.FindStringSubmatch(filePath)
 	if m != nil {
 		glob := filepath.Base(filePath)
@@ -98,33 +88,32 @@ func readSshdConfig(filePath string, osProvider os.OperatingSystemProvider) ([]s
 			fullFilepath := filepath.Join(baseDirectoryPath, info.Name())
 
 			// Now search through that file for any more Include statements
-			files, content, err := readSshdConfig(fullFilepath, osProvider)
+			s, c, err := ReadSshdConfig(fullFilepath, runtime, osProvider)
 			if err != nil {
 				return err
 			}
-			allFiles = append(allFiles, files...)
-			if _, err := allContent.WriteString(content); err != nil {
-				return err
-			}
+			ctx.AddRange(c)
+			res.WriteString(s)
+
 			return nil
 		})
 		if wErr != nil {
-			return nil, "", fmt.Errorf("error while walking through sshd config directory: %s", wErr)
+			return "", ctx, fmt.Errorf("error while walking through sshd config directory: %s", wErr)
 		}
 
-		return allFiles, allContent.String(), nil
+		return res.String(), ctx, nil
 	}
 
-	// Now see if we're dealing with a directory
+	// 2: See if we're dealing with a directory
 	fullFilePath := getFullPath(filePath)
 	f, err := osProvider.FS().Open(fullFilePath)
 	if err != nil {
-		return nil, "", err
+		return "", ctx, err
 	}
 
 	fileInfo, err := f.Stat()
 	if err != nil {
-		return nil, "", err
+		return "", ctx, err
 	}
 	if fileInfo.IsDir() {
 		// Again list all files in lexical order
@@ -138,58 +127,73 @@ func readSshdConfig(filePath string, osProvider os.OperatingSystemProvider) ([]s
 			if info.IsDir() {
 				return nil
 			}
-			allFiles = append(allFiles, path)
 
 			// Now check this very file for any 'Include' statements
-			files, content, err := readSshdConfig(path, osProvider)
+			s, c, err := ReadSshdConfig(path, runtime, osProvider)
 			if err != nil {
 				return err
 			}
-			allFiles = append(allFiles, files...)
-			if _, err := allContent.WriteString(content); err != nil {
-				return err
-			}
+			ctx.AddRange(c)
+			res.WriteString(s)
 
 			return nil
 		})
 		if wErr != nil {
-			return nil, "", fmt.Errorf("error while walking through sshd config directory: %s", wErr)
+			return "", ctx, fmt.Errorf("error while walking through sshd config directory: %s", wErr)
 		}
 
-		return allFiles, allContent.String(), nil
+		return res.String(), ctx, nil
 	}
 
-	// If here, we must be dealing with neither a wildcard nor directory
+	// 3: If here, we must be dealing with neither a wildcard nor directory
 	// so just consume the file's contents
-	allFiles = append(allFiles, fullFilePath)
-
 	rawFile, err := ioutil.ReadAll(f)
 	if err != nil {
-		return nil, "", err
+		return "", ctx, err
 	}
 
+	rFile, err := runtime.CreateResource("file", "path", filePath, "content", string(rawFile))
+	if err != nil {
+		return "", ctx, err
+	}
+	coreFile := rFile.(core.File)
+	ctx.Files[coreFile.MqlResource().Id] = coreFile
+
 	scanner := bufio.NewScanner(strings.NewReader(string(rawFile)))
+	lines := 0
+	startLine := 1
 	for scanner.Scan() {
 		line := scanner.Text()
+		lines++
 		m := includeStatement.FindStringSubmatch(line)
 		if m != nil {
 			includeList := strings.Split(m[1], " ") // TODO: what about files with actual spaces in their names?
 			for _, file := range includeList {
-				files, content, err := readSshdConfig(file, osProvider)
+				ctx.Ranges = append(ctx.Ranges, ContextInfo{
+					File:  coreFile,
+					Range: llx.NewRange().AddLineRange(uint32(startLine), uint32(lines)),
+				})
+
+				s, c, err := ReadSshdConfig(file, runtime, osProvider)
 				if err != nil {
-					return nil, "", err
+					return "", ctx, err
 				}
-				allFiles = append(allFiles, files...)
-				if _, err := allContent.WriteString(content); err != nil {
-					return nil, "", err
-				}
+				ctx.AddRange(c)
+				res.WriteString(s)
+
+				startLine = lines + 1
 			}
 			continue
 		}
 
-		if _, err := allContent.WriteString(line + "\n"); err != nil {
-			return nil, "", err
-		}
+		res.WriteString(line)
+		res.WriteByte('\n')
 	}
-	return allFiles, allContent.String(), nil
+
+	ctx.Ranges = append(ctx.Ranges, ContextInfo{
+		File:  coreFile,
+		Range: llx.NewRange().AddLineRange(uint32(startLine), uint32(lines)),
+	})
+
+	return res.String(), ctx, nil
 }

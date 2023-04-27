@@ -645,6 +645,8 @@ func init() {
 			"{}": {f: func(e *blockExecutor, bind *RawData, chunk *Chunk, ref uint64) (*RawData, uint64, error) {
 				return e.runBlock(bind, chunk.Function.Args[0], chunk.Function.Args[1:], ref)
 			}},
+			// FIXME: this needs to move to explicit functions that support arguments
+			"context": {f: resourceContext},
 			// TODO: [#32] unique builtin fields that need a long-term support in LR
 			string(types.Resource("parse") + ".date"): {f: resourceDateV2},
 		},

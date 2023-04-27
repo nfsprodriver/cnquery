@@ -61,12 +61,14 @@ func (vm *varmap) len() int {
 type compilerConfig struct {
 	Schema          *resources.Schema
 	UseAssetContext bool
+	UseFileContext  bool
 }
 
 func NewConfig(schema *resources.Schema, features cnquery.Features) compilerConfig {
 	return compilerConfig{
 		Schema:          schema,
 		UseAssetContext: features.IsActive(cnquery.MQLAssetContext),
+		UseFileContext:  features.IsActive(cnquery.FileContext),
 	}
 }
 
@@ -1896,7 +1898,10 @@ func (c *compiler) addContexts() {
 			Function: &llx.Function{
 				Type:    string(types.Resource("file.context")),
 				Binding: chunk.Function.Binding,
-				Args:    []*llx.Primitive{llx.ArrayPrimitive(calls, types.String)},
+				Args: []*llx.Primitive{
+					llx.ArrayPrimitive(calls, types.String),
+					llx.RefPrimitiveV2(ref),
+				},
 			},
 		})
 		block.Datapoints = append(block.Datapoints, block.TailRef(ref))
@@ -1913,7 +1918,9 @@ func (c *compiler) CompileParsed(ast *parser.AST) error {
 	c.postCompile()
 	c.Result.CodeV2.UpdateID()
 	c.updateEntrypoints(true)
-	c.addContexts()
+	if c.compilerConfig.UseFileContext {
+		c.addContexts()
+	}
 	c.updateLabels()
 
 	return nil

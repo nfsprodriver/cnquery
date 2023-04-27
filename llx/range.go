@@ -83,6 +83,29 @@ func (r RangeData) AddLineColumnRange(line1 uint32, line2 uint32, column1 uint32
 	return r
 }
 
+// Offset pushes all lines by a given offset and returns the new range
+func (r RangeData) Offset(n int) RangeData {
+	panic("OFFSET")
+}
+
+func (r RangeData) ContainsLine(line uint32) bool {
+	var g []uint32
+	for len(r) != 0 {
+		g, r = r.ExtractNext()
+
+		if len(g) == 1 || len(g) == 3 {
+			if g[0] == line {
+				return true
+			}
+		} else if len(g) == 2 || len(g) == 4 {
+			if g[0] <= line && line <= g[1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (r RangeData) ExtractNext() ([]uint32, RangeData) {
 	if len(r) == 0 {
 		return nil, nil
@@ -109,7 +132,7 @@ func (r RangeData) ExtractNext() ([]uint32, RangeData) {
 			res = append(res, uint32(n))
 		}
 		if l2 != 0 {
-			n := bytes2int(r[idx : idx+l1])
+			n := bytes2int(r[idx : idx+l2])
 			idx += l2
 			res = append(res, uint32(n))
 		}
@@ -127,7 +150,7 @@ func (r RangeData) ExtractNext() ([]uint32, RangeData) {
 			res = append(res, uint32(n))
 		}
 		if l2 != 0 {
-			n := bytes2int(r[idx : idx+l1])
+			n := bytes2int(r[idx : idx+l2])
 			idx += l2
 			res = append(res, uint32(n))
 		}

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
-	"go.mondoo.com/cnquery/llx"
 	"go.mondoo.com/cnquery/resources"
 	"go.mondoo.com/cnquery/resources/packs/core"
 	"go.mondoo.com/cnquery/resources/packs/os/sshd"
@@ -74,22 +74,32 @@ func (s *mqlSshdConfig) getFiles(confPath string) ([]interface{}, error) {
 	}
 
 	// Get the list of all files involved in defining the runtime sshd configuration
-	allFiles, err := sshd.GetAllSshdIncludedFiles(confPath, osProv)
+	content, ctx, err := sshd.ReadSshdConfig(confPath, s.MotorRuntime, osProv)
 	if err != nil {
 		return nil, err
 	}
 
 	// Return a list of lumi files
-	lumiFiles := make([]interface{}, len(allFiles))
-	for i, v := range allFiles {
-
-		lumiFile, err := s.MotorRuntime.CreateResource("file", "path", v)
-		if err != nil {
-			return nil, err
-		}
-
-		lumiFiles[i] = lumiFile.(core.File)
+	lumiFiles := make([]interface{}, len(ctx.Files))
+	idx := 0
+	for _, v := range ctx.Files {
+		lumiFiles[idx] = v
+		idx++
 	}
+
+	// we use this during params parsing to get file context
+	s.Cache.Store("_ctx", &resources.CacheEntry{
+		Valid:     true,
+		Timestamp: time.Now().Unix(),
+		Data:      ctx,
+	})
+
+	// We may as well store this, since we just read it all [Note#1]
+	s.Cache.Store("content", &resources.CacheEntry{
+		Valid:     true,
+		Timestamp: time.Now().Unix(),
+		Data:      content,
+	})
 
 	return lumiFiles, nil
 }
@@ -126,7 +136,10 @@ func (s *mqlSshdConfig) GetFiles() ([]interface{}, error) {
 
 func (s *mqlSshdConfig) GetContent(files []interface{}) (string, error) {
 	// TODO: this can be heavily improved once we do it right, since this is constantly
-	// re-registered as the file changes
+	// re-registered as the file changes.
+
+	// This method is not called if GetFiles was executed (and not pre-cached),
+	// in which case we get the content for free. See [Note#1]
 
 	// files is in the "dependency" order that files were discovered while
 	// parsing the base/root config file. We will essentially re-parse the
@@ -156,16 +169,31 @@ func (s *mqlSshdConfig) GetContent(files []interface{}) (string, error) {
 		return "", err
 	}
 
-	fullContent, err := sshd.GetSshdUnifiedContent(baseConfigFilePath, osProv)
+	// In this second pass we will get the files that matter from the
+	// root file's perspective.
+	content, ctx, err := sshd.ReadSshdConfig(baseConfigFilePath, s.MotorRuntime, osProv)
 	if err != nil {
 		return "", err
 	}
 
-	return fullContent, nil
+	// we use this during params parsing to get file context
+	s.Cache.Store("_ctx", &resources.CacheEntry{
+		Valid:     true,
+		Timestamp: time.Now().Unix(),
+		Data:      ctx,
+	})
+
+	return content, nil
 }
 
 func (s *mqlSshdConfig) GetParams(content string) (map[string]interface{}, error) {
-	params, err := sshd.Params(content)
+	cache, ok := s.Cache.Load("_ctx")
+	var contentCtx sshd.RangeContext
+	if ok {
+		contentCtx = cache.Data.(sshd.RangeContext)
+	}
+
+	params, paramsContext, err := sshd.Params(content, contentCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +203,17 @@ func (s *mqlSshdConfig) GetParams(content string) (map[string]interface{}, error
 	for k, v := range params {
 		res[k] = v
 	}
+
+	ctx := make(map[string]sshd.ContextInfo, len(paramsContext))
+	for k, v := range paramsContext {
+		ctx["params.[\""+k+"\"]"] = v
+	}
+
+	s.Cache.Store("_context", &resources.CacheEntry{
+		Timestamp: time.Now().Unix(),
+		Valid:     true,
+		Data:      ctx,
+	})
 
 	return res, nil
 }
@@ -231,34 +270,30 @@ func (s *mqlSshdConfig) GetHostkeys(params map[string]interface{}) ([]interface{
 	return s.parseConfigEntrySlice(rawHostKeys)
 }
 
-type ContextInfo struct {
-	File  core.File
-	Range llx.RangeData
-}
-
-func (s *mqlSshdConfig) GetContext(calls string) (core.FileContext, error) {
-	entry, ok := s.Cache.Load("calls")
+func (s *mqlSshdConfig) GetContext(calls []string) (interface{}, error) {
+	entry, ok := s.Cache.Load("_context")
 	if !ok || entry == nil {
-		return nil, nil
+		return nil, errors.New("no file context found for sshd.config")
 	}
 
-	contexts, ok := entry.Data.(map[string]ContextInfo)
+	contexts, ok := entry.Data.(map[string]sshd.ContextInfo)
 	if !ok {
 		return nil, errors.New("internal error, cannot map calls to context in sshd.config")
 	}
 
-	context, ok := contexts[calls]
+	sCalls := strings.Join(calls, ".")
+	context, ok := contexts[sCalls]
 	if !ok {
 		return nil, nil
 	}
 
 	r, err := s.MotorRuntime.CreateResource("file.context",
 		"file", context.File,
-		"range", context.Range,
+		"range", []byte(context.Range),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return r.(core.FileContext), nil
+	return r, nil
 }
