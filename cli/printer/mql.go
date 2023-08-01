@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"go.mondoo.com/cnquery/llx"
-	"go.mondoo.com/cnquery/resources/packs/all/info"
 	"go.mondoo.com/cnquery/sortx"
 	"go.mondoo.com/cnquery/types"
 	"golang.org/x/exp/slices"
@@ -318,8 +317,6 @@ func (print *Printer) refMap(typ types.Type, data map[string]interface{}, codeID
 		}
 	}
 
-	schema := info.Registry.Schema()
-
 	code := bundle.CodeV2
 	ep := code.Blocks[0].Entrypoints[0]
 	chunk := code.Chunk(ep)
@@ -333,8 +330,9 @@ func (print *Printer) refMap(typ types.Type, data map[string]interface{}, codeID
 
 	nonDefaultFields := []string{}
 	defaultFields := []string{}
-	if listType != "" {
-		if resourceInfo, ok := schema.GetResources()[listType]; ok {
+	if listType != "" && print.schema != nil {
+		resourceInfo := (*print.schema).Lookup(listType)
+		if resourceInfo != nil {
 			defaultFields = strings.Split(resourceInfo.Defaults, " ")
 		}
 	}

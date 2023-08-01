@@ -7,6 +7,7 @@ import (
 
 	"github.com/muesli/termenv"
 	"go.mondoo.com/cnquery/cli/theme/colors"
+	"go.mondoo.com/cnquery/llx"
 )
 
 // Printer turns code into human-readable strings
@@ -19,6 +20,7 @@ type Printer struct {
 	Disabled  func(...interface{}) string
 	Failed    func(...interface{}) string
 	Success   func(...interface{}) string
+	schema    *llx.Schema
 }
 
 // DefaultPrinter that can be used without additional configuration
@@ -47,6 +49,10 @@ var DefaultPrinter = Printer{
 	Success: func(args ...interface{}) string {
 		return termenv.String(fmt.Sprint(args...)).Foreground(colors.DefaultColorTheme.Success).String()
 	},
+}
+
+func (p *Printer) SetSchema(schema *llx.Schema) {
+	p.schema = schema
 }
 
 // PlainNoColorPrinter is a printer without colors
