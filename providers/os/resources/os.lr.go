@@ -306,6 +306,14 @@ func init() {
 			Init: initYumRepo,
 			Create: createYumRepo,
 		},
+		"registrykey": {
+			// to override args, implement: initRegistrykey(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRegistrykey,
+		},
+		"registrykey.property": {
+			// to override args, implement: initRegistrykeyProperty(runtime *plugin.Runtime, args map[string]*llx.RawData) (map[string]*llx.RawData, plugin.Resource, error)
+			Create: createRegistrykeyProperty,
+		},
 		"container.image": {
 			Init: initContainerImage,
 			Create: createContainerImage,
@@ -1371,6 +1379,30 @@ var getDataFields = map[string]func(r plugin.Resource) *plugin.DataRes{
 	},
 	"yum.repo.enabled": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlYumRepo).GetEnabled()).ToDataRes(types.Bool)
+	},
+	"registrykey.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykey).GetPath()).ToDataRes(types.String)
+	},
+	"registrykey.exists": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykey).GetExists()).ToDataRes(types.Bool)
+	},
+	"registrykey.properties": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykey).GetProperties()).ToDataRes(types.Map(types.String, types.String))
+	},
+	"registrykey.children": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykey).GetChildren()).ToDataRes(types.Array(types.String))
+	},
+	"registrykey.property.path": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykeyProperty).GetPath()).ToDataRes(types.String)
+	},
+	"registrykey.property.name": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykeyProperty).GetName()).ToDataRes(types.String)
+	},
+	"registrykey.property.exists": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykeyProperty).GetExists()).ToDataRes(types.Bool)
+	},
+	"registrykey.property.value": func(r plugin.Resource) *plugin.DataRes {
+		return (r.(*mqlRegistrykeyProperty).GetValue()).ToDataRes(types.String)
 	},
 	"container.image.reference": func(r plugin.Resource) *plugin.DataRes {
 		return (r.(*mqlContainerImage).GetReference()).ToDataRes(types.String)
@@ -3023,6 +3055,46 @@ var setDataFields = map[string]func(r plugin.Resource, v *llx.RawData) bool {
 		r.(*mqlYumRepo).Enabled, ok = plugin.RawToTValue[bool](v.Value, v.Error)
 		return
 	},
+	"registrykey.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+			r.(*mqlRegistrykey).__id, ok = v.Value.(string)
+			return
+		},
+	"registrykey.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykey).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"registrykey.exists": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykey).Exists, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"registrykey.properties": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykey).Properties, ok = plugin.RawToTValue[map[string]interface{}](v.Value, v.Error)
+		return
+	},
+	"registrykey.children": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykey).Children, ok = plugin.RawToTValue[[]interface{}](v.Value, v.Error)
+		return
+	},
+	"registrykey.property.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+			r.(*mqlRegistrykeyProperty).__id, ok = v.Value.(string)
+			return
+		},
+	"registrykey.property.path": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykeyProperty).Path, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"registrykey.property.name": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykeyProperty).Name, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
+	"registrykey.property.exists": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykeyProperty).Exists, ok = plugin.RawToTValue[bool](v.Value, v.Error)
+		return
+	},
+	"registrykey.property.value": func(r plugin.Resource, v *llx.RawData) (ok bool) {
+		r.(*mqlRegistrykeyProperty).Value, ok = plugin.RawToTValue[string](v.Value, v.Error)
+		return
+	},
 	"container.image.__id": func(r plugin.Resource, v *llx.RawData) (ok bool) {
 			r.(*mqlContainerImage).__id, ok = v.Value.(string)
 			return
@@ -3212,9 +3284,11 @@ func createMondooEol(runtime *plugin.Runtime, args map[string]*llx.RawData) (plu
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -3325,9 +3399,11 @@ func createPlatformAdvisories(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -3408,9 +3484,11 @@ func createPlatformCves(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4095,9 +4173,11 @@ func createOsUpdate(runtime *plugin.Runtime, args map[string]*llx.RawData) (plug
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4167,9 +4247,11 @@ func createOsBase(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4315,9 +4397,11 @@ func createOsUnix(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4376,9 +4460,11 @@ func createOsLinux(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4469,9 +4555,11 @@ func createOsRootCertificates(runtime *plugin.Runtime, args map[string]*llx.RawD
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4551,9 +4639,11 @@ func createCommand(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4634,9 +4724,11 @@ func createPowershell(runtime *plugin.Runtime, args map[string]*llx.RawData) (pl
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4708,9 +4800,11 @@ func createFile(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.R
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -4895,9 +4989,11 @@ func createFilePermissions(runtime *plugin.Runtime, args map[string]*llx.RawData
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5053,9 +5149,11 @@ func createFilesFind(runtime *plugin.Runtime, args map[string]*llx.RawData) (plu
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5140,9 +5238,11 @@ func createParseIni(runtime *plugin.Runtime, args map[string]*llx.RawData) (plug
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5231,9 +5331,11 @@ func createParseJson(runtime *plugin.Runtime, args map[string]*llx.RawData) (plu
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5302,9 +5404,11 @@ func createParsePlist(runtime *plugin.Runtime, args map[string]*llx.RawData) (pl
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5373,9 +5477,11 @@ func createParseYaml(runtime *plugin.Runtime, args map[string]*llx.RawData) (plu
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5445,9 +5551,11 @@ func createParseCertificates(runtime *plugin.Runtime, args map[string]*llx.RawDa
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5548,9 +5656,11 @@ func createParseOpenpgp(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5640,9 +5750,11 @@ func createUser(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.R
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5772,9 +5884,11 @@ func createPrivatekey(runtime *plugin.Runtime, args map[string]*llx.RawData) (pl
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5890,9 +6004,11 @@ func createAuthorizedkeys(runtime *plugin.Runtime, args map[string]*llx.RawData)
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -5983,9 +6099,11 @@ func createAuthorizedkeysEntry(runtime *plugin.Runtime, args map[string]*llx.Raw
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6053,9 +6171,11 @@ func createGroup(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6190,9 +6310,11 @@ func createPackage(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6342,9 +6464,11 @@ func createPamConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6449,9 +6573,11 @@ func createPamConfServiceEntry(runtime *plugin.Runtime, args map[string]*llx.Raw
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6562,9 +6688,11 @@ func createSshdConfig(runtime *plugin.Runtime, args map[string]*llx.RawData) (pl
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6714,9 +6842,11 @@ func createService(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -6920,9 +7050,11 @@ func createKernelModule(runtime *plugin.Runtime, args map[string]*llx.RawData) (
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7052,9 +7184,11 @@ func createDockerImage(runtime *plugin.Runtime, args map[string]*llx.RawData) (p
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7123,9 +7257,11 @@ func createDockerContainer(runtime *plugin.Runtime, args map[string]*llx.RawData
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7371,9 +7507,11 @@ func createIptablesEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7466,9 +7604,11 @@ func createProcess(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7601,9 +7741,11 @@ func createPort(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.R
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7708,9 +7850,11 @@ func createPorts(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7844,9 +7988,11 @@ func createAuditpolEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) 
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -7983,9 +8129,11 @@ func createNtpConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8100,9 +8248,11 @@ func createRsyslogConf(runtime *plugin.Runtime, args map[string]*llx.RawData) (p
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8194,9 +8344,11 @@ func createLogindefs(runtime *plugin.Runtime, args map[string]*llx.RawData) (plu
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8275,9 +8427,11 @@ func createLsblk(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8338,9 +8492,11 @@ func createLsblkEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (pl
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8401,9 +8557,11 @@ func createMount(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8464,9 +8622,11 @@ func createMountPoint(runtime *plugin.Runtime, args map[string]*llx.RawData) (pl
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8527,9 +8687,11 @@ func createShadow(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8594,9 +8756,11 @@ func createShadowEntry(runtime *plugin.Runtime, args map[string]*llx.RawData) (p
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8674,9 +8838,11 @@ func createYum(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Re
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8750,9 +8916,11 @@ func createYumRepo(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugi
 		return res, err
 	}
 
+	if res.__id == "" {
 	res.__id, err = res.id()
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if runtime.HasRecording {
@@ -8821,6 +8989,149 @@ func (c *mqlYumRepo) GetMirrors() *plugin.TValue[string] {
 func (c *mqlYumRepo) GetEnabled() *plugin.TValue[bool] {
 	return plugin.GetOrCompute[bool](&c.Enabled, func() (bool, error) {
 		return c.enabled()
+	})
+}
+
+// mqlRegistrykey for the registrykey resource
+type mqlRegistrykey struct {
+	MqlRuntime *plugin.Runtime
+	__id string
+	// optional: if you define mqlRegistrykeyInternal it will be used here
+	Path plugin.TValue[string]
+	Exists plugin.TValue[bool]
+	Properties plugin.TValue[map[string]interface{}]
+	Children plugin.TValue[[]interface{}]
+}
+
+// createRegistrykey creates a new instance of this resource
+func createRegistrykey(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRegistrykey{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+	res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("registrykey", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRegistrykey) MqlName() string {
+	return "registrykey"
+}
+
+func (c *mqlRegistrykey) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRegistrykey) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlRegistrykey) GetExists() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Exists, func() (bool, error) {
+		return c.exists()
+	})
+}
+
+func (c *mqlRegistrykey) GetProperties() *plugin.TValue[map[string]interface{}] {
+	return plugin.GetOrCompute[map[string]interface{}](&c.Properties, func() (map[string]interface{}, error) {
+		return c.properties()
+	})
+}
+
+func (c *mqlRegistrykey) GetChildren() *plugin.TValue[[]interface{}] {
+	return plugin.GetOrCompute[[]interface{}](&c.Children, func() ([]interface{}, error) {
+		return c.children()
+	})
+}
+
+// mqlRegistrykeyProperty for the registrykey.property resource
+type mqlRegistrykeyProperty struct {
+	MqlRuntime *plugin.Runtime
+	__id string
+	mqlRegistrykeyPropertyInternal
+	Path plugin.TValue[string]
+	Name plugin.TValue[string]
+	Exists plugin.TValue[bool]
+	Value plugin.TValue[string]
+}
+
+// createRegistrykeyProperty creates a new instance of this resource
+func createRegistrykeyProperty(runtime *plugin.Runtime, args map[string]*llx.RawData) (plugin.Resource, error) {
+	res := &mqlRegistrykeyProperty{
+		MqlRuntime: runtime,
+	}
+
+	err := SetAllData(res, args)
+	if err != nil {
+		return res, err
+	}
+
+	if res.__id == "" {
+	res.__id, err = res.id()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if runtime.HasRecording {
+		args, err = runtime.ResourceFromRecording("registrykey.property", res.__id)
+		if err != nil || args == nil {
+			return res, err
+		}
+		return res, SetAllData(res, args)
+	}
+
+	return res, nil
+}
+
+func (c *mqlRegistrykeyProperty) MqlName() string {
+	return "registrykey.property"
+}
+
+func (c *mqlRegistrykeyProperty) MqlID() string {
+	return c.__id
+}
+
+func (c *mqlRegistrykeyProperty) GetPath() *plugin.TValue[string] {
+	return &c.Path
+}
+
+func (c *mqlRegistrykeyProperty) GetName() *plugin.TValue[string] {
+	return &c.Name
+}
+
+func (c *mqlRegistrykeyProperty) GetExists() *plugin.TValue[bool] {
+	return plugin.GetOrCompute[bool](&c.Exists, func() (bool, error) {
+		return c.exists()
+	})
+}
+
+func (c *mqlRegistrykeyProperty) GetValue() *plugin.TValue[string] {
+	return plugin.GetOrCompute[string](&c.Value, func() (string, error) {
+		vargExists := c.GetExists()
+		if vargExists.Error != nil {
+			return "", vargExists.Error
+		}
+
+		return c.value(vargExists.Data)
 	})
 }
 
