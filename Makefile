@@ -116,7 +116,7 @@ providers/lr:
 	go build -o lr ./providers-sdk/v1/lr/cli/main.go
 
 .PHONY: providers/build
-providers/build: providers/build/core providers/build/network providers/build/os
+providers/build: providers/build/core providers/build/network providers/build/os providers/build/slack
 
 providers/build/core: providers/lr
 	@$(call genProvider, providers/core)
@@ -127,10 +127,14 @@ providers/build/network: providers/lr
 providers/build/os: providers/lr
 	@$(call genProvider, providers/os)
 
+providers/build/slack: providers/lr
+	@$(call genProvider, providers/slack)
+
 providers/install:
 #	@$(call installProvider, providers/core)
 	@$(call installProvider, providers/network)
 	@$(call installProvider, providers/os)
+	@$(call installProvider, providers/slack)
 
 providers/bundle:
 	@$(call installProvider, providers/network)
