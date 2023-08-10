@@ -127,6 +127,9 @@ providers/build/network: providers/lr
 providers/build/os: providers/lr
 	@$(call genProvider, providers/os)
 
+providers/build/aws: providers/lr
+	@$(call genProvider, providers/aws)
+
 providers/install:
 #	@$(call installProvider, providers/core)
 	@$(call installProvider, providers/network)
